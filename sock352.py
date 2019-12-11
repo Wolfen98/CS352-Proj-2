@@ -175,23 +175,25 @@ class socket:
         return len(buffer)
     
     def recv(self, nbytes):
-        good_packet_list = []
+        packetList = []
         self.socket.settimeout(None)
         goal_length = int(math.ceil(float(nbytes) / MAX_PAYLOAD_SIZE))
-        while len(good_packet_list) < goal_length:
-            if len(good_packet_list) == goal_length - 1:
-                num_to_get = HEADER_LEN + nbytes - ((goal_length - 1) * MAX_PAYLOAD_SIZE)
-            else:
-                num_to_get = HEADER_LEN + MAX_PAYLOAD_SIZE
-            data_pack = self.get_packet(size = num_to_get)
-            if data_pack['seq_no'] == self.my_rn:
-                self.my_rn += data_pack['payload_len']
-                good_packet_list.append(data_pack['payload'])
-            self.send_packet(ack_no = self.my_rn, flags = SOCK352_ACK)
-        #print(good_packet_list)
-        final_string = b''.join(good_packet_list)
+        #somewhere here, I have to make it read the global buffer instead.
+        data_thread = threading.Thread(target= self.recv_data, args= (nbytes,))
+        data_thread.start()
+        while data_thread.isAlive():
+            while len(packetList) < goal_length:
+                if len(packetList) == goal_length - 1:
+                    num_to_get = HEADER_LEN + nbytes - ((goal_length - 1) * MAX_PAYLOAD_SIZE)
+                else:
+                    num_to_get = HEADER_LEN + MAX_PAYLOAD_SIZE
+                    data_pack = self.get_packet(size = num_to_get)
+                    if data_pack['seq_no'] == self.my_rn:
+                        self.my_rn += data_pack['payload_len']
+                        packetList.append(data_pack['payload'])
+                        self.send_packet(ack_no = self.my_rn, flags = SOCK352_ACK)
+        final_string = b''.join(packetList)
         return final_string
-    #helper functions
     def register_timeout(self):
         with self.lock:
             self.timeout = True
@@ -214,7 +216,11 @@ class socket:
                 self.register_timeout()
                 
     def recv_data(self, data):
-        pass
+        global GLOBAL_BUFFER
+        #how do I check
+        data += GLOBAL_BUFFER
+        self.send_packet(ack_no = self.my_rn, flags= SOCK352_ACK)
+        
     def doNothing():
         pass
     def get_packet(self, size = HEADER_LEN, timeout_func = doNothing):
